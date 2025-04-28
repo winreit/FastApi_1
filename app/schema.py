@@ -1,69 +1,84 @@
+from pydantic import BaseModel
 import datetime
 from typing import Literal
-
-from pydantic import BaseModel
+import uuid
 
 
 class IdResponseBase(BaseModel):
     id: int
 
+
+class StatusResponse(BaseModel):
+    status: Literal["deleted"]
+
+
 class GetAdvertisementResponse(BaseModel):
     id: int
     title: str
     description: str
-    created_at: datetime.datetime
-    updated_at: str
-    author_id: int
-    author_name: str
     price: int
-
-class CreateAdvertisementResponse(IdResponseBase):
-    pass
-
-class UpdateAdvertisementResponse(IdResponseBase):
-    pass
+    created_at: datetime.datetime
+    author_id: int
 
 
 class CreateAdvertisementRequest(BaseModel):
     title: str
     description: str
     price: int
-    author_id: int
+
+
+
+class CreateAdvertisementResponse(IdResponseBase):
+    pass
 
 
 class UpdateAdvertisementRequest(BaseModel):
-    title: str
-    description: str
-    price: int
-    author_id: int
+    title: str | None = None
+    description: str | None = None
+    price: int | None = None
 
 
-class DeleteAdvertisementResponse(BaseModel):
+class UpdateAdvertisementResponse(IdResponseBase):
     pass
 
-class StatusResponse(BaseModel):
-    status: Literal["deleted"]
 
-class CreateUserRequest(BaseModel):
-    name: str
+class DeleteAdvertisementResponse(StatusResponse):
+    pass
+
+class BaseUserRequest(BaseModel):
+    email: str
     password: str
+
+class CreateUserRequest(BaseUserRequest):
+    name: str
+
 
 class CreateUserResponse(IdResponseBase):
     pass
 
+
 class GetUserResponse(BaseModel):
     id: int
     name: str
-    created_at: datetime.datetime
-    updated_at: str
+    registration_time: datetime.datetime
+
 
 class UpdateUserRequest(BaseModel):
     name: str | None = None
+    email: str | None = None
     password: str | None = None
 
 
 class UpdateUserResponse(IdResponseBase):
     pass
 
-class DeleteUserResponse(BaseModel):
+
+class DeleteUserResponse(StatusResponse):
     pass
+
+
+class LoginRequest(BaseUserRequest):
+    pass
+
+class LoginResponse(BaseModel):
+    token: uuid.UUID
