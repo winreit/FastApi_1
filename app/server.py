@@ -1,13 +1,11 @@
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query
 import uvicorn
 from lifespan import lifespan
-from models import Advert, User, Token
-from dependency import SessionDependency, TokenDependency
+from models import Advert, User
+from dependency import SessionDependency
 import crud
 from constants import STATUS_DELETED
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
-from auth import check_password, hash_password
 
 from schema import (
     GetAdvertisementResponse,
@@ -22,10 +20,7 @@ from schema import (
     UpdateUserRequest,
     UpdateUserResponse,
     DeleteUserResponse,
-    LoginRequest,
-    LoginResponse,
 )
-
 
 app = FastAPI(
     title="Advertisement API",
@@ -41,15 +36,13 @@ app = FastAPI(
     tags=["advertisements"],
 )
 async def create_advertisement(
-    advert_request: CreateAdvertisementRequest,
-    session: SessionDependency,
-    token: TokenDependency,
+    advert_request: CreateAdvertisementRequest, session: SessionDependency
 ):
     advertisement_obj = Advert(
         title=advert_request.title,
         description=advert_request.description,
         price=advert_request.price,
-        author_id=token.user_id,
+        author_id=advert_request.author_id,
     )
     await crud.add_advert(session, advertisement_obj)
     return advertisement_obj.id_dict
@@ -64,13 +57,10 @@ async def update_advertisement(
     advertisement_id: int,
     advertisement_request: UpdateAdvertisementRequest,
     session: SessionDependency,
-    token: TokenDependency,
 ):
 
     advertisement_json = advertisement_request.model_dump(exclude_unset=True)
     advertisement = await crud.get_advert_by_id(session, Advert, advertisement_id)
-    if advertisement.author_id != token.user_id and token.user.role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
     for field, value in advertisement_json.items():
         setattr(advertisement, field, value)
 
@@ -83,12 +73,8 @@ async def update_advertisement(
     response_model=DeleteAdvertisementResponse,
     tags=["advertisements"],
 )
-async def delete_advertisement(
-    advertisement_id: int, session: SessionDependency, token: TokenDependency
-):
+async def delete_advertisement(advertisement_id: int, session: SessionDependency):
     advertisement = await crud.get_advert_by_id(session, Advert, advertisement_id)
-    if advertisement.author_id != token.user_id and token.user.role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
     await crud.delete_advert(advertisement, session)
     return STATUS_DELETED
 
@@ -134,10 +120,7 @@ async def get_advertisement_by_qs(
 
 @app.post("/api/v1/user", response_model=CreateUserResponse, tags=["users"])
 async def create_user(user_request: CreateUserRequest, session: SessionDependency):
-    user_request_dict = user_request.dict()
-    user_request_dict["password"] = hash_password(user_request_dict["password"])
-
-    user_obj = User(**user_request_dict)
+    user_obj = User(name=user_request.name, password=user_request.password)
     await crud.add_user(session, user_obj)
     return user_obj.id_dict
 
@@ -150,16 +133,11 @@ async def get_user(session: SessionDependency, user_id: int):
 
 @app.patch("/api/v1/user/{user_id}", response_model=UpdateUserResponse, tags=["users"])
 async def update_user(
-    user_id: int,
-    user_request: UpdateUserRequest,
-    session: SessionDependency,
-    token: TokenDependency,
+    user_id: int, user_request: UpdateUserRequest, session: SessionDependency
 ):
 
     user_json = user_request.model_dump(exclude_unset=True)
     user = await crud.get_user_by_id(session, User, user_id)
-    if user.id != token.user_id and token.user.role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
     for field, value in user_json.items():
         setattr(user, field, value)
 
@@ -168,25 +146,10 @@ async def update_user(
 
 
 @app.delete("/api/v1/user/{user_id}", response_model=DeleteUserResponse, tags=["users"])
-async def delete_user(user_id: int, session: SessionDependency, token: TokenDependency):
+async def delete_user(user_id: int, session: SessionDependency):
     user = await crud.get_user_by_id(session, User, user_id)
-    if user.id != token.user_id and token.user.role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
     await crud.delete_user(user, session)
     return STATUS_DELETED
-
-
-@app.post("/api/v1/login", response_model=LoginResponse, tags=["user"])
-async def login(login_request: LoginRequest, session: SessionDependency):
-    user_query = select(User).where(User.email == login_request.email)
-    user = await session.scalar(user_query)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not check_password(login_request.password, user.password):
-        raise HTTPException(status_code=401, detail="Invalid password")
-    token = Token(user_id=user.id)
-    await crud.add_token(session, token)
-    return token.dict
 
 
 app.add_middleware(
